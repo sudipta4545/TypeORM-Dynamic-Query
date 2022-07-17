@@ -40,7 +40,7 @@ Generated sql Code looks like :
 
 ```sql
 
-select * from test_table where (test_name like %ou% ) AND (test_code = 'abcd') ORDER BY Id ASC  LIMIT 10
+SELECT * FROM test_table WHERE (test_name like %ou% ) AND (test_code = 'abcd') ORDER BY Id ASC  LIMIT 10
 
 ```
 
@@ -90,7 +90,7 @@ Generated sql Code looks like :
 
 ```sql
 
-select * from test_table where (test_name like %ou% ) AND ((test_code LIKE %ol%) OR (sample_type = 'Blood')) ORDER BY Id ASC  LIMIT 10
+SELECT * FROM test_table WHERE (test_name like %ou% ) AND ((test_code LIKE %ol%) OR (sample_type = 'Blood')) ORDER BY Id ASC  LIMIT 10
 
 ```
 

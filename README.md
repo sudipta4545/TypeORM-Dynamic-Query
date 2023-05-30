@@ -1,6 +1,75 @@
 # TypeORM-Dynamic-Query
  TypeORM dynamic query Builder
 
+## How To Use with TypeORM SelectQueryBuilder 
+
+Use in Service: 
+```javascript
+
+constructor(@InjectRepository(TestList) private TestListRepository: Repository<TestList>) {}
+
+async findRecord() {
+    return this.TestListRepository.createQueryBuilder('test_list');
+}
+
+```
+
+Use in Controller:
+```javascript
+import { DynamicQueryBuilder, IFilterable } from '../DynamicQueryBuilder';
+constructor(private readonly testListService: TestListService) {}
+@Post('list')
+async getRecords(@Req() req, @Res() response: Response, @Body() body: any): Promise<any> {
+    try {
+        const filterable: IFilterable[] = [
+            {
+                field: 'testId',
+                table: 'test_list',
+                sort: true,
+                filter: true,
+            },
+            {
+                field: 'testName',
+                table: 'test_list',
+                sort: true,
+                filter: true,
+            },
+            {
+                field: 'testCode',
+                table: 'test_list',
+                sort: true,
+                filter: true,
+            }]
+
+        const data = await this.testListService.findRecord();
+        if (body) {
+            await DynamicQueryBuilder(data, body, filterable);
+        }
+
+        let [item, total] = await data
+            .select([
+                'test_list.testId',
+                'test_list.testCode',
+                'test_list.testName'
+             ]).getManyAndCount();
+        return response.status(HttpStatus.OK).json({
+            data: item,
+            total: total,
+        });
+        
+    } catch (e) {
+        console.log(e);
+        return response.status(e.status ? e.status : HttpStatus.BAD_REQUEST).json({
+            status: 'fail',
+            message: [e.code ? e.code : e.response],
+        });
+    }
+}
+
+```
+
+
+
 
 ## Request object:
 

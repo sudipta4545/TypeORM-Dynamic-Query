@@ -1,22 +1,12 @@
 import { Brackets, SelectQueryBuilder, WhereExpressionBuilder } from 'typeorm';
-interface FieldOptions {
-  is?: string;
-  not?: string;
-  in?: string;
-  not_in?: string;
-  lt?: string;
-  lte?: string;
-  gt?: string;
-  gte?: string;
-  contains?: string;
-  not_contains?: string;
-  starts_with?: string;
-  not_starts_with?: string;
-  ends_with?: string;
-  not_ends_with?: string;
+export interface IFilterable {
+  field: string;
+  table: string;
+  sort: boolean;
+  filter: boolean;
 }
 
-export const DynamicQueryBuilder = <T>(query: SelectQueryBuilder<T>, tableName: string, params: any) => {
+export const DynamicQueryBuilder = async <T>(query: SelectQueryBuilder<T>, params: any, filterable?: IFilterable[]) => {
   const keys = Object.keys(params);
   let take = 0;
   let skip = 0;
@@ -28,25 +18,44 @@ export const DynamicQueryBuilder = <T>(query: SelectQueryBuilder<T>, tableName: 
     if (keys.indexOf('skip') >= 0) {
       skip = params.skip;
     }
+
+    if (filterable) {
+      if (filterable.length > 0) {
+        filterable.forEach((item) => {
+          if (params.filter) {
+            if (item.filter) {
+              deepSearch(params.filter, 'field', item.field, item.table);
+            }
+          }
+          if (params.sort) {
+            if (item.sort) {
+              deepSearch(params.sort, 'field', item.field, item.table);
+            }
+          }
+        });
+      }
+    }
+
     if (keys.indexOf('sort') >= 0) {
-      generateSortQuery(query, params.sort, tableName);
+      generateSortQuery(query, params.sort);
     }
 
     if (keys.indexOf('filter') >= 0) {
       const key2 = Object.keys(params.filter);
+
       if (key2.length == 2) {
         const all = [];
-        traverseTree(query, all, params.filter, tableName);
+        await traverseTree(query, all, params.filter);
       }
     }
   } else {
-    console.log('No Body');
+    // console.log('No Body');
   }
 
   return query.take(take).skip(skip);
 };
 
-const generateSortQuery = <T>(query: SelectQueryBuilder<T>, params = [], tableName = '') => {
+const generateSortQuery = <T>(query: SelectQueryBuilder<T>, params = []) => {
   params.forEach((e, i) => {
     const keys = Object.keys(e);
     let field = '';
@@ -54,7 +63,11 @@ const generateSortQuery = <T>(query: SelectQueryBuilder<T>, params = [], tableNa
 
     if (keys.length > 0) {
       if (keys.indexOf('field') >= 0) {
-        field = tableName + '.' + e.field;
+        if (e.field.includes('.')) {
+          field = e.field;
+        } else {
+          field = 'substance_list.' + e.field;
+        }
       }
       if (keys.indexOf('dir') >= 0) {
         dir = e.dir;
@@ -79,8 +92,11 @@ const generateSortQuery = <T>(query: SelectQueryBuilder<T>, params = [], tableNa
   });
 };
 
-const traverseTree = async (query: WhereExpressionBuilder, all: any, filter: any, tableName: string, Operator = '') => {
-  if (filter.filters) {
+const traverseTree = async (query: WhereExpressionBuilder, all: any, filter: any, Operator = '') => {
+  if (!filter.filters) {
+    generateWhereQuery(query, filter, Operator === 'AND' ? 'andWhere' : 'orWhere');
+    all.push(filter);
+  } else {
     let logic = 'AND';
 
     if (filter.logic == 'or') {
@@ -88,33 +104,33 @@ const traverseTree = async (query: WhereExpressionBuilder, all: any, filter: any
     }
 
     const filters = filter.filters;
-    let index = 0;
+    let index: number;
     for (index = 0; index < filters.length; index++) {
       if (logic === 'AND') {
-        query = query.andWhere(buildNewBrackets(all, filters[index], tableName, 'AND'));
+        query = query.andWhere(buildNewBrackets(all, filters[index], 'AND'));
       } else {
-        query = query.orWhere(buildNewBrackets(all, filters[index], tableName, 'OR'));
+        query = query.orWhere(buildNewBrackets(all, filters[index], 'OR'));
       }
     }
-  } else {
-    query = generateWhereQuery(query, filter, tableName, Operator === 'AND' ? 'andWhere' : 'orWhere');
-
-    // console.debug(query);
-
-    all.push(filter);
   }
 
   return JSON.stringify(all);
 };
 
-const buildNewBrackets = (all: any, filter: any, tableName: string, logic: string) => {
+const buildNewBrackets = (all: any, filter: any, logic: string) => {
   return new Brackets(async (qb) => {
-    traverseTree(qb, all, filter, tableName, logic);
+    await traverseTree(qb, all, filter, logic);
   });
 };
 
-const generateWhereQuery = (query: WhereExpressionBuilder, fields: any, tableName: string, andOr: 'andWhere' | 'orWhere') => {
-  const fieldName = tableName + '.' + fields.field;
+const generateWhereQuery = (query: WhereExpressionBuilder, fields: any, andOr: 'andWhere' | 'orWhere') => {
+  let fieldName: string;
+  if (fields.field.includes('.')) {
+    fieldName = fields.field;
+  } else {
+    fieldName = fields.field;
+  }
+
   const value = fields.value;
   const operation = fields.operator;
 
@@ -153,7 +169,7 @@ const generateWhereQuery = (query: WhereExpressionBuilder, fields: any, tableNam
       break;
     }
     case 'gte': {
-      query[andOr](`${fieldName} >= :${param}`, { gtevalue: value });
+      query[andOr](`${fieldName} >= :${param}`, { [param]: value });
       break;
     }
     case 'contains': {
@@ -189,7 +205,7 @@ const generateWhereQuery = (query: WhereExpressionBuilder, fields: any, tableNam
 };
 
 const randomString = (keyLength: number) => {
-  let i = 0;
+  let i: number;
   let key = '';
   let characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
@@ -201,3 +217,30 @@ const randomString = (keyLength: number) => {
 
   return key;
 };
+
+const deepSearch = (obj: any, key: string, value: string, tableName: string) => {
+  // console.log(obj)
+  // Base case
+  if (obj[key] === value) {
+    return obj;
+  } else {
+    const keys = Object.keys(obj); // add this line to iterate over the keys
+
+    for (let i = 0, len = keys.length; i < len; i++) {
+      const k = keys[i]; // use this key for iteration, instead of index "i"
+
+      // add "obj[k] &&" to ignore null values
+      if (obj[k] && typeof obj[k] == 'object') {
+        const found = deepSearch(obj[k], key, value, tableName);
+        if (found) {
+          if (found['field']) {
+            found['field'] = tableName + '.' + found['field']; // replace field name
+
+            return obj;
+          }
+        }
+      }
+    }
+  }
+};
+
